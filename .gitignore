@@ -3,6 +3,7 @@
 
 ### Data ###
 data/
+outputs/
 *.csv
 *.dat
 *.efx

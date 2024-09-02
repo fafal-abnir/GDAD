@@ -1,0 +1,3 @@
+learning_rate: 0.001
+metric: "torchmetrics.classification.BinaryAveragePrecision"
+loss_fn: "torch.nn.BCEWithLogitsLoss"

@@ -1,0 +1,24 @@
+defaults:
+  - model: default_model
+  - training: default_training
+
+model:
+  input_dim: None
+  hidden_conv1: 64
+  hidden_conv2: 32
+  num_nodes: None
+  dropout: 0.1
+  gnn_name: "GCN"
+  update: "moving"
+
+training:
+  learning_rate: 0.001
+  metric: "torchmetrics.classification.BinaryAveragePrecision"
+  loss_fn: "torch.nn.BCEWithLogitsLoss"
+
+dataset:
+  name: "DGraphFin"
+  root_dir: "data/"
+
+general:
+  lightning_root_dir: "experiments/edge_level"

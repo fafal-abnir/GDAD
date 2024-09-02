@@ -1,0 +1,7 @@
+input_dim: 128
+hidden_conv1: 64
+hidden_conv2: 32
+num_nodes: 100
+dropout: 0.0
+gnn_name: "GCN"
+update: "moving"

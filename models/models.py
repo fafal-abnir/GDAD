@@ -1,4 +1,5 @@
 import torch
+from dataclasses import dataclass
 from torch.nn import GRUCell
 import torch.nn.functional as F
 from torch.nn import Linear
@@ -7,48 +8,60 @@ import torch_geometric.nn as geom_nn
 gnn_layer_by_name = {"GCN": geom_nn.GCNConv, "GAT": geom_nn.GATConv, "GraphConv": geom_nn.GraphConv}
 
 
+@dataclass
+class ModelConfig:
+    input_dim: int
+    hidden_conv1: int
+    hidden_conv2: int
+    num_nodes: int
+    dropout: float = 0
+    gnn_name: str = "GCN"
+    update: str = "moving"
+
+
 class EdgeRolandGNN(torch.nn.Module):
-    def __init__(self, input_dim, hidden_conv1, hidden_conv2, num_nodes, dropout=0.0, gnn_name="GCN", update="moving",
-                 **kwargs):
-        """
-        Args:
-            input_dim: Dimension of input features
-            hidden_conv1: Dimension of conv1
-            hidden_conv2: Dimension of conv2
-            c_out: Dimension of the output features. Usually number of classes in classification
-            num_layers: Number of "hidden" graph layers
-            layer_name: String of the graph layer to use
-            dp_rate: Dropout rate to apply throughout the network
-            role_embedding: for concatenation of role_embedding at first layer
-            kwargs: Additional arguments for the graph layer (e.g. number of heads for GAT)
-        """
+    def __init__(self, config: ModelConfig):
+        # """
+        # Args:
+        #     input_dim: Dimension of input features
+        #     hidden_conv1: Dimension of conv1
+        #     hidden_conv2: Dimension of conv2
+        #     c_out: Dimension of the output features. Usually number of classes in classification
+        #     num_layers: Number of "hidden" graph layers
+        #     layer_name: String of the graph layer to use
+        #     dp_rate: Dropout rate to apply throughout the network
+        #     role_embedding: for concatenation of role_embedding at first layer
+        #     kwargs: Additional arguments for the graph layer (e.g. number of heads for GAT)
+        # """
         super().__init__()
-        gnn_layer = gnn_layer_by_name[gnn_name]
+        gnn_layer = gnn_layer_by_name[config.gnn_name]
+        self.num_nodes = config.num_nodes
         # TODO: I should find a solution for handling multiple layer forward
-        self.hidden_conv_1 = hidden_conv1
-        self.hidden_conv_2 = hidden_conv2
-        self.preprocess1 = Linear(input_dim, 256)
+        self.hidden_conv1 = config.hidden_conv1
+        self.hidden_conv2 = config.hidden_conv2
+        self.preprocess1 = Linear(config.input_dim, 256)
         self.preprocess2 = Linear(256, 128)
-        self.conv1 = gnn_layer(128, hidden_conv1)
-        self.conv2 = gnn_layer(hidden_conv1, hidden_conv2)
-        self.postprocessing1 = geom_nn.Linear(hidden_conv2, 2)
-        self.dropout = dropout
+        self.conv1 = gnn_layer(128, config.hidden_conv1)
+        self.conv2 = gnn_layer(config.hidden_conv1, config.hidden_conv2)
+        self.postprocessing1 = geom_nn.Linear(config.hidden_conv2, 2)
+        self.dropout = config.dropout
         # Update layer
-        self.update = update
-        if update == "moving":
+        self.update = config.update
+        if self.update == "moving":
             self.tau = torch.Tensor([0])
-        elif update == "gru":
-            self.gru1 = GRUCell(hidden_conv1, hidden_conv1)
-            self.gru2 = GRUCell(hidden_conv2, hidden_conv2)
-        elif update == "mlp":
-            self.mlp1 = geom_nn.Linear(hidden_conv1 * 2, hidden_conv1)
-            self.mlp2 = geom_nn.Linear(hidden_conv2 * 2, hidden_conv2)
+        elif self.update == "gru":
+            self.gru1 = GRUCell(self.hidden_conv1, self.hidden_conv1)
+            self.gru2 = GRUCell(self.hidden_conv2, self.hidden_conv2)
+        elif self.update == "mlp":
+            self.mlp1 = geom_nn.Linear(self.hidden_conv1 * 2, self.hidden_conv1)
+            self.mlp2 = geom_nn.Linear(self.hidden_conv2 * 2, self.hidden_conv2)
         else:
-            assert (0 <= update <= 1)
-            self.tau = torch.Tensor([update])
+            assert (0 <= self.update <= 1)
+            self.tau = torch.Tensor([self.update])
         # find better soluction for this part
-        self.previous_embeddings = [torch.Tensor([[0 for _ in range(hidden_conv1)] for _ in range(num_nodes)]),
-                                    torch.Tensor([[0 for _ in range(hidden_conv2)] for _ in range(num_nodes)])]
+        self.previous_embeddings = [
+            torch.Tensor([[0 for _ in range(self.hidden_conv1)] for _ in range(self.num_nodes)]),
+            torch.Tensor([[0 for _ in range(self.hidden_conv2)] for _ in range(self.num_nodes)])]
 
     def reset_parameters(self):
         self.conv1.reset_parameters()
@@ -62,7 +75,7 @@ class EdgeRolandGNN(torch.nn.Module):
         if self.update == "moving" and num_current_edges is not None and num_previous_edges is not None:
             self.tau = torch.Tensor([num_previous_edges / (num_previous_edges + num_current_edges)]).clone()
         current_embeddings = [torch.Tensor([]), torch.Tensor([])]
-        ## Preprocess step
+        # Preprocess step
         h = self.preprocess1(x)
         h = F.leaky_relu(h, inplace=False)
         h = F.dropout(h, p=self.dropout, inplace=True)
